@@ -1,0 +1,6 @@
+# Arquivos de ambiente
+.env
+
+# Diretórios de build
+/bin/
+/vendor/
