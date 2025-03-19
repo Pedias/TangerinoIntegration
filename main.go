@@ -36,6 +36,12 @@ func ParseDDMMYYYYToMillis(dateStr string) (string, error) {
 
 func main() {
 	if len(os.Args) < 2 {
+		fmt.Print("Informe o modo (--insert ou --update): ")
+		var mode string
+		fmt.Scanln(&mode)
+		os.Args = append(os.Args, mode)
+	}
+	if len(os.Args) < 2 {
 		fmt.Println("Uso: go run main.go --insert    // Para inserir novos registros")
 		fmt.Println("   ou: go run main.go --update   // Para atualizar registros existentes")
 		return
