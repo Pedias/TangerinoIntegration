@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"TangerinoIntegration/api"
+	"TangerinoIntegration/company"
 	"TangerinoIntegration/db"
 
 	"github.com/joho/godotenv"
@@ -35,34 +36,72 @@ func ParseDDMMYYYYToMillis(dateStr string) (string, error) {
 }
 
 func main() {
+	// Se não houver argumentos, solicita ao usuário
 	if len(os.Args) < 2 {
-		fmt.Print("Informe o modo (--insert ou --update): ")
+		fmt.Print("Informe o modo (--insert, --update ou --companyupload): ")
 		var mode string
 		fmt.Scanln(&mode)
 		os.Args = append(os.Args, mode)
 	}
 	if len(os.Args) < 2 {
-		fmt.Println("Uso: go run main.go --insert    // Para inserir novos registros")
-		fmt.Println("   ou: go run main.go --update   // Para atualizar registros existentes")
+		fmt.Println("Uso:")
+		fmt.Println("  go run main.go --insert        // Para inserir novos registros de funcionários")
+		fmt.Println("  go run main.go --update        // Para atualizar registros de funcionários")
+		fmt.Println("  go run main.go --companyupload // Para enviar dados de filiais")
 		return
 	}
 
 	mode := os.Args[1]
 
-	// 1. Conexão Oracle
+	// Conecta ao Oracle
 	conn, err := db.NewOracleConnection()
 	if err != nil {
 		log.Fatalf("Erro ao criar conexão: %v", err)
 	}
 	defer conn.Close()
 
-	// 2. Busca usuários da view TANGERINO_USERS
+	// Se o modo for companyupload, executa a rotina de envio de filiais
+	if mode == "--companyupload" {
+		companies, err := db.GetTangerinoCompanies(conn)
+		if err != nil {
+			log.Fatalf("Erro ao buscar dados de filiais: %v", err)
+		}
+
+		for _, c := range companies {
+			// Converte o CODFILIAL para inteiro para o campo "id" (se necessário)
+			/*id, err := strconv.Atoi(c.CodFilial)
+			if err != nil {
+				log.Printf("Erro convertendo CODFILIAL (%s) para inteiro: %v\n", c.CodFilial, err)
+				continue
+			}*/
+
+			payload := company.CompanyPayload{
+				Cnpj: c.Cnpj,
+				// CnpjMask não será utilizado
+				DescriptionName: c.RazaoSocial,
+				ExternalId:      c.CodFilial,
+				FantasyName:     c.NomeFantasia,
+				//Id:              id,             //não permite passar o id
+				SocialReason: c.RazaoSocial,
+			}
+
+			err = company.PostCompanyToTangerino(payload)
+			if err != nil {
+				log.Printf("Falha ao enviar filial CODFILIAL=%s: %v\n", c.CodFilial, err)
+			} else {
+				log.Printf("Filial CODFILIAL=%s enviada com sucesso.\n", c.CodFilial)
+			}
+		}
+		fmt.Println("Envio de filiais finalizado.")
+		return
+	}
+
+	// Se não for companyupload, processa os dados de funcionários
 	users, err := db.GetTangerinoUsers(conn)
 	if err != nil {
 		log.Fatalf("Erro ao buscar usuários: %v", err)
 	}
 
-	// 3. Para cada usuário, converte datas e monta payload
 	for _, u := range users {
 		admissionDateStr, err := ParseDDMMYYYYToMillis(u.Admissao)
 		if err != nil {
@@ -75,7 +114,8 @@ func main() {
 			log.Printf("Erro ao parsear data de nascimento (CHAPA=%s): %v\n", u.Chapa, err)
 			continue
 		}
-		//tratamento de genero
+
+		// Tratamento de gênero
 		var gender string
 		switch strings.ToUpper(u.Sexo) {
 		case "M":
@@ -111,17 +151,20 @@ func main() {
 			AdmissionDate: admissionDateStr,
 			EffectiveDate: effectiveDateStr,
 			Email:         email,
-			ExternalId:    u.Chapa, // Usado para identificar o funcionário no update
+			ExternalId:    u.Chapa,
 			BirthDate:     birthDateStr,
 			Carteiratrab:  u.Carteiratrab,
 			Seriecarttrab: u.Seriecarttrab,
 			Pispasep:      u.Pispasep,
 			Telefone:      u.Telefone,
-			Cargo:         u.Funcao, // Mapeando o campo função para o campo "jobRoleDescription" da API
+			Cargo:         u.Funcao,
 			Gender:        gender,
 			Intern:        intern,
+			Company:       u.Idcompany,
 		}
-
+		/*if mode == "--insert" {
+			payload.Company = strings.TrimSpace(u.Codfilial)
+		}*/
 		// Seleciona qual endpoint chamar com base no argumento de linha de comando
 		switch mode {
 		case "--insert":
@@ -139,7 +182,7 @@ func main() {
 				log.Printf("Atualização de colaborador CHAPA=%s bem-sucedida.\n", u.Chapa)
 			}
 		default:
-			fmt.Println("Opção inválida. Use --insert ou --update")
+			fmt.Println("Opção inválida. Use --insert, --update ou --companyupload")
 			return
 		}
 	}

@@ -14,4 +14,5 @@ type TangerinoUser struct {
 	Seriecarttrab string
 	Pispasep      string
 	Telefone      string
+	Idcompany     int
 }

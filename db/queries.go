@@ -8,7 +8,9 @@ import (
 )
 
 func GetTangerinoUsers(conn *sql.DB) ([]models.TangerinoUser, error) {
-	query := `SELECT CHAPA, NOME, SEXO, CPF, FUNCAO, NASCIMENTO, EMAIL, ADMISSAO, CARTEIRATRAB, SERIECARTTRAB, PISPASEP, TELEFONE1 FROM RM.TANGERINO_USERS`
+	query := `SELECT CHAPA, NOME, SEXO, CPF, FUNCAO, NASCIMENTO, EMAIL, ADMISSAO, CARTEIRATRAB,
+	 SERIECARTTRAB, PISPASEP, TELEFONE1, IDCOMPANY
+		FROM RM.TANGERINO_USERS`
 
 	rows, err := conn.Query(query)
 	if err != nil {
@@ -20,7 +22,7 @@ func GetTangerinoUsers(conn *sql.DB) ([]models.TangerinoUser, error) {
 	for rows.Next() {
 		var u models.TangerinoUser
 		err := rows.Scan(&u.Chapa, &u.Nome, &u.Sexo, &u.Cpf, &u.Funcao, &u.Nascimento, &u.Email,
-			&u.Admissao, &u.Carteiratrab, &u.Seriecarttrab, &u.Pispasep, &u.Telefone)
+			&u.Admissao, &u.Carteiratrab, &u.Seriecarttrab, &u.Pispasep, &u.Telefone, &u.Idcompany)
 
 		if err != nil {
 			return nil, fmt.Errorf("erro ao fazer Scan dos dados: %w", err)

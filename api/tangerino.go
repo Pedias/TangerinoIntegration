@@ -32,6 +32,7 @@ type TangerinoEmployeePayload struct {
 	Cargo         string `json:"jobRoleDescription"`
 	Gender        string `json:"gender,omitempty"`
 	Intern        bool   `json:"intern"`
+	Company       int    `json:"company"`
 }
 
 // PostEmployeeToTangerino envia o payload para inserção (endpoint padrão)
