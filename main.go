@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/mail"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,21 +25,31 @@ func init() {
 	}
 }
 
-// ParseDDMMYYYYToMillis converte uma data no formato "DD/MM/YYYY" para timestamp em milissegundos.
+// ParseDDMMYYYYToMillis converte uma data no formato "DD/MM/YYYY" para timestamp em milissegundos, interpretando a data como UTC.
 func ParseDDMMYYYYToMillis(dateStr string) (string, error) {
 	layout := "02/01/2006"
-	t, err := time.Parse(layout, dateStr)
+	loc, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		return "", fmt.Errorf("erro ao carregar fuso horário: %w", err)
+	}
+
+	t, err := time.ParseInLocation(layout, dateStr, loc)
 	if err != nil {
 		return "", err
 	}
+
 	ms := t.UnixMilli()
 	return strconv.FormatInt(ms, 10), nil
+}
+func RemoveMascaraTelefone(telefone string) string {
+	re := regexp.MustCompile(`\D`) // \D pega tudo que não é dígito
+	return re.ReplaceAllString(telefone, "")
 }
 
 func main() {
 	// Se não houver argumentos, solicita ao usuário
 	if len(os.Args) < 2 {
-		fmt.Print("Informe o modo (--insert, --update ou --companyupload): ")
+		fmt.Print("Informe o modo (--insert, --update, --companyupload ou --workplaceupload): ")
 		var mode string
 		fmt.Scanln(&mode)
 		os.Args = append(os.Args, mode)
@@ -48,6 +59,7 @@ func main() {
 		fmt.Println("  go run main.go --insert        // Para inserir novos registros de funcionários")
 		fmt.Println("  go run main.go --update        // Para atualizar registros de funcionários")
 		fmt.Println("  go run main.go --companyupload // Para enviar dados de filiais")
+		fmt.Println("  go run main.go --workplaceupload // Para enviar dados de setores")
 		return
 	}
 
@@ -68,21 +80,12 @@ func main() {
 		}
 
 		for _, c := range companies {
-			// Converte o CODFILIAL para inteiro para o campo "id" (se necessário)
-			/*id, err := strconv.Atoi(c.CodFilial)
-			if err != nil {
-				log.Printf("Erro convertendo CODFILIAL (%s) para inteiro: %v\n", c.CodFilial, err)
-				continue
-			}*/
-
 			payload := company.CompanyPayload{
-				Cnpj: c.Cnpj,
-				// CnpjMask não será utilizado
+				Cnpj:            c.Cnpj,
 				DescriptionName: c.RazaoSocial,
 				ExternalId:      c.CodFilial,
 				FantasyName:     c.NomeFantasia,
-				//Id:              id,             //não permite passar o id
-				SocialReason: c.RazaoSocial,
+				SocialReason:    c.RazaoSocial,
 			}
 
 			err = company.PostCompanyToTangerino(payload)
@@ -96,7 +99,31 @@ func main() {
 		return
 	}
 
-	// Se não for companyupload, processa os dados de funcionários
+	// Se o modo for workplaceupload, executa a rotina de envio de setores
+	if mode == "--workplaceupload" {
+		workplaces, err := db.GetTangerinoWorkplaces(conn)
+		if err != nil {
+			log.Fatalf("Erro ao buscar dados de setores: %v", err)
+		}
+
+		for _, w := range workplaces {
+			payload := api.TangerinoWorkplacePayload{
+				ExternalId: w.CodSetor,
+				Name:       w.NomeSetor,
+			}
+
+			err = api.PostWorkplaceToTangerino(payload)
+			if err != nil {
+				log.Printf("Falha ao enviar setor CODSETOR=%s: %v\n", w.CodSetor, err)
+			} else {
+				log.Printf("Setor CODSETOR=%s enviado com sucesso.\n", w.CodSetor)
+			}
+		}
+		fmt.Println("Envio de setores finalizado.")
+		return
+	}
+
+	// Se não for companyupload nem workplaceupload, processa os dados de funcionários
 	users, err := db.GetTangerinoUsers(conn)
 	if err != nil {
 		log.Fatalf("Erro ao buscar usuários: %v", err)
@@ -156,11 +183,12 @@ func main() {
 			Carteiratrab:  u.Carteiratrab,
 			Seriecarttrab: u.Seriecarttrab,
 			Pispasep:      u.Pispasep,
-			Telefone:      u.Telefone,
+			Telefone:      RemoveMascaraTelefone(u.Telefone),
 			Cargo:         u.Funcao,
 			Gender:        gender,
 			Intern:        intern,
 			Company:       u.Idcompany,
+			Workplace:     u.Setor,
 		}
 		/*if mode == "--insert" {
 			payload.Company = strings.TrimSpace(u.Codfilial)
@@ -182,7 +210,7 @@ func main() {
 				log.Printf("Atualização de colaborador CHAPA=%s bem-sucedida.\n", u.Chapa)
 			}
 		default:
-			fmt.Println("Opção inválida. Use --insert, --update ou --companyupload")
+			fmt.Println("Opção inválida. Use --insert, --update, --companyupload ou --workplaceupload")
 			return
 		}
 	}
