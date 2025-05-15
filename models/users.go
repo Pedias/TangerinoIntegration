@@ -16,4 +16,6 @@ type TangerinoUser struct {
 	Telefone      string
 	Idcompany     int
 	Setor         string
+	Demissao      string
+	CodSituacao   string
 }
