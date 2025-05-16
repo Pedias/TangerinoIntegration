@@ -27,7 +27,7 @@ SELECT
     SETOR,
     DEMISSAO,
     CODSITUACAO
-FROM RM.TANGERINO_USERS` // incluiu CODSITUACAO
+FROM RM.TANGERINO_USERS`
 
 	rows, err := conn.Query(query)
 	if err != nil {

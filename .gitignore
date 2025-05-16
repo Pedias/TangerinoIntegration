@@ -4,3 +4,6 @@
 # Diretórios de build
 /bin/
 /vendor/
+
+# DIRETORIO DE LOGS
+LOG/

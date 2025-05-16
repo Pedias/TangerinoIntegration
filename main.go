@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,17 +53,33 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("Uso: --insert | --update | --dismiss | --companyupload | --workplaceupload")
 	}
-	mode := os.Args[1]
+	mode := strings.TrimPrefix(os.Args[1], "--")
 
-	// 2) Conexão com Oracle
+	// 2) Inicializa log para arquivo e console com nome baseado no modo e data
+	logDir := "LOG"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Fatalf("Erro ao criar diretório de logs: %v", err)
+	}
+	timestamp := time.Now().Format("02-01-2006-15-04")
+	logPath := filepath.Join(logDir, fmt.Sprintf("%s-%s.txt", mode, timestamp))
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("Erro ao criar arquivo de log: %v", err)
+	}
+	defer logFile.Close()
+	mw := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(mw)
+	log.Printf("Modo selecionado: %s", mode)
+
+	// 3) Conexão com Oracle
 	conn, err := db.NewOracleConnection()
 	if err != nil {
 		log.Fatalf("Erro ao criar conexão Oracle: %v", err)
 	}
 	defer conn.Close()
 
-	// 3) Company upload
-	if mode == "--companyupload" {
+	// 4) Company upload
+	if mode == "companyupload" {
 		companies, err := db.GetTangerinoCompanies(conn)
 		if err != nil {
 			log.Fatalf("Erro ao buscar filiais: %v", err)
@@ -83,8 +101,8 @@ func main() {
 		return
 	}
 
-	// 4) Workplace upload
-	if mode == "--workplaceupload" {
+	// 5) Workplace upload
+	if mode == "workplaceupload" {
 		workplaces, err := db.GetTangerinoWorkplaces(conn)
 		if err != nil {
 			log.Fatalf("Erro ao buscar setores: %v", err)
@@ -103,14 +121,14 @@ func main() {
 		return
 	}
 
-	// 5) Busca usuários
+	// 6) Busca usuários
 	users, err := db.GetTangerinoUsers(conn)
 	if err != nil {
 		log.Fatalf("Erro ao buscar usuários: %v", err)
 	}
 
-	// 6) Demissão
-	if mode == "--dismiss" {
+	// 7) Demissão
+	if mode == "dismiss" {
 		for _, u := range users {
 			dem := strings.TrimSpace(u.Demissao)
 			if dem == "" {
@@ -139,8 +157,7 @@ func main() {
 		return
 	}
 
-	// 7) Insert / Update
-	// Data mínima de efetivação (rollout Solides date)
+	// 8) Insert / Update
 	const rolloutDate = "01/04/2025"
 	rolloutMsStr, err := ParseDDMMYYYYToMillis(rolloutDate)
 	if err != nil {
@@ -152,12 +169,10 @@ func main() {
 	}
 
 	for _, u := range users {
-		// Pula ex-funcionários demitidos no insert conforme CodSituacao
-		if mode == "--insert" && u.CodSituacao == "D" {
+		if mode == "insert" && u.CodSituacao == "D" {
 			continue
 		}
 
-		// Parse admissão
 		admissionMsStr, err := ParseDDMMYYYYToMillis(u.Admissao)
 		if err != nil {
 			log.Printf("Admissão inválida CHAPA=%s: %v", u.Chapa, err)
@@ -168,40 +183,34 @@ func main() {
 			log.Printf("Erro convertendo admissionTs CHAPA=%s: %v", u.Chapa, err)
 			continue
 		}
-		// Define effective date mínimo
 		effectiveTsInt := admissionTs
 		if admissionTs < rolloutTs {
 			effectiveTsInt = rolloutTs
 		}
 		effectiveMsStr := strconv.FormatInt(effectiveTsInt, 10)
 
-		// Parse nascimento
 		birthMsStr, err := ParseDDMMYYYYToMillis(u.Nascimento)
 		if err != nil {
 			log.Printf("Nascimento inválido CHAPA=%s: %v", u.Chapa, err)
 			continue
 		}
 
-		// Gênero
 		gender := "MASCULINO"
 		if strings.EqualFold(u.Sexo, "F") {
 			gender = "FEMININO"
 		}
 
-		// Email
-		email := u.Email
+		email := strings.TrimSpace(u.Email)
 		if _, err := mail.ParseAddress(email); err != nil {
 			log.Printf("Email inválido CHAPA=%s: %q; omitindo", u.Chapa, email)
 			email = ""
 		}
 
-		// Intern
 		intern := false
 		if strings.Contains(strings.ToUpper(u.Funcao), "ESTAGIÁRIO") {
 			intern = true
 		}
 
-		// Monta payload
 		payload := api.TangerinoEmployeePayload{
 			Name:                u.Nome,
 			Cpf:                 u.Cpf,
@@ -223,7 +232,7 @@ func main() {
 		}
 
 		var errSend error
-		if mode == "--insert" {
+		if mode == "insert" {
 			errSend = api.PostEmployeeToTangerino(payload)
 		} else {
 			errSend = api.PostEmployeeToTangerinoUpdate(payload)
@@ -232,10 +241,10 @@ func main() {
 		if errSend != nil {
 			log.Printf("CHAPA=%s erro: %v", u.Chapa, errSend)
 		} else {
-			action := map[string]string{"--insert": "Inserção", "--update": "Atualização"}[mode]
+			action := map[string]string{"insert": "Inserção", "update": "Atualização"}[mode]
 			log.Printf("%s CHAPA=%s bem-sucedida.", action, u.Chapa)
 		}
 	}
 
-	fmt.Println("Finalizado.")
+	log.Println("Finalizado.")
 }
