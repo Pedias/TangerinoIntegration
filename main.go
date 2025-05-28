@@ -45,7 +45,7 @@ func RemoveMascaraTelefone(telefone string) string {
 func main() {
 	// 1) Leitura do modo
 	if len(os.Args) < 2 {
-		fmt.Print("Modo (--insert, --update, --dismiss, --companyupload, --workplaceupload): ")
+		fmt.Print("Modo (--insert, --update, --dismiss): ") //--companyupload | --workplaceupload
 		var m string
 		fmt.Scanln(&m)
 		os.Args = append(os.Args, m)
@@ -169,7 +169,8 @@ func main() {
 	}
 
 	for _, u := range users {
-		if mode == "insert" && u.CodSituacao == "D" {
+		if mode == "insert" && strings.TrimSpace(u.CodSituacao) == "D" {
+			log.Printf("Pulando CHAPA=%s pois CodSituacao=D", u.Chapa)
 			continue
 		}
 
