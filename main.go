@@ -47,7 +47,11 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Print("Modo (--insert, --update, --dismiss): ") //--companyupload | --workplaceupload
 		var m string
-		fmt.Scanln(&m)
+		_, err := fmt.Scanln(&m)
+		if err != nil {
+			log.Printf("Erro na leitura do modo: %v", err)
+			return
+		}
 		os.Args = append(os.Args, m)
 	}
 	if len(os.Args) < 2 {
@@ -66,7 +70,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Erro ao criar arquivo de log: %v", err)
 	}
-	defer logFile.Close()
+	defer func() {
+		if err := logFile.Close(); err != nil {
+			log.Printf("Erro ao fechar arquivo de log: %v", err)
+		}
+	}()
 	mw := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(mw)
 	log.Printf("Modo selecionado: %s", mode)
@@ -76,7 +84,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Erro ao criar conexão Oracle: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("Erro ao fechar conexão Oracle: %v", err)
+		}
+	}()
 
 	// 4) Company upload
 	if mode == "companyupload" {
