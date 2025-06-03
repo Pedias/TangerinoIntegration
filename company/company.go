@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 )
@@ -48,7 +49,12 @@ func PostCompanyToTangerino(cp CompanyPayload) error {
 	if err != nil {
 		return fmt.Errorf("erro ao enviar request POST: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("falha no envio da filial. HTTP %d", resp.StatusCode)

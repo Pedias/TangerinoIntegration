@@ -54,7 +54,7 @@ FROM RM.TANGERINO_USERS`
 			&u.Idcompany,
 			&u.Setor,
 			&u.Demissao,
-			&u.CodSituacao, // novo campo
+			&u.CodSituacao,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("erro ao fazer Scan dos dados: %w", err)
