@@ -285,6 +285,7 @@ func main() {
 		} else {
 			action := map[string]string{"insert": "Inserção", "update": "Atualização"}[mode]
 			log.Printf("%s CHAPA=%s bem-sucedida", action, u.Chapa)
+			log.Printf("==================================================================================================================================================================================")
 		}
 	}
 
