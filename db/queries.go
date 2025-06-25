@@ -69,7 +69,3 @@ FROM RM.TANGERINO_USERS`
 	log.Printf("Foram encontrados %d registros na view TANGERINO_USERS.\n", len(usuarios))
 	return usuarios, nil
 }
-
-// Também atualize o modelo em models/users.go adicionando:
-//    CodSituacao string `json:"codSituacao"`
-// ao struct TangerinoUser para acomodar o novo campo.

@@ -23,7 +23,6 @@ func NewOracleConnection() (*sql.DB, error) {
 	// Ajusta o formato de data para toda a sessão
 	if _, err := db.Exec(`ALTER SESSION SET NLS_DATE_FORMAT = 'DD/MM/YYYY'`); err != nil {
 		log.Printf("Aviso: falha ao alterar NLS_DATE_FORMAT: %v", err)
-		// você pode optar por retornar o erro aqui, se preferir
 	} else {
 		log.Println("SESSION NLS_DATE_FORMAT ajustado para DD/MM/YYYY")
 	}

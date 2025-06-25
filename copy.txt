@@ -52,8 +52,9 @@ func main() {
 	log.Println("Aplicação iniciada")
 
 	// 1) Leitura do modo
+	log.Println("Verificando parâmetros de linha de comando")
 	if len(os.Args) < 2 {
-		fmt.Print("Modo (--insert, --update, --dismiss, --companyupload, --workplaceupload): ")
+		fmt.Print("Modo (--insert, --update, --dismiss): ") //--companyupload | --workplaceupload
 		var m string
 		_, err := fmt.Scanln(&m)
 		if err != nil {
@@ -69,12 +70,13 @@ func main() {
 	mode := strings.TrimPrefix(os.Args[1], "--")
 	log.Printf("Modo selecionado: %s", mode)
 
-	// 2) Inicializa sistema de logs
+	// 2) Inicializa log para arquivo e console com nome baseado no modo e data
+	log.Println("Inicializando sistema de logs")
 	logDir := "LOG"
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Fatalf("Erro ao criar diretório de logs: %v", err)
 	}
-	timestamp := time.Now().Format("02-01-2006-15-04-05")
+	timestamp := time.Now().Format("02-01-2006-15-04")
 	logPath := filepath.Join(logDir, fmt.Sprintf("%s-%s.txt", mode, timestamp))
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -85,24 +87,35 @@ func main() {
 			log.Printf("Erro ao fechar arquivo de log: %v", err)
 		}
 	}()
-	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	mw := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(mw)
+	log.Println("Logs direcionados para console e arquivo")
 
 	// 3) Conexão com Oracle
+	log.Println("Conectando ao Oracle...")
 	conn, err := db.NewOracleConnection()
 	if err != nil {
 		log.Fatalf("Erro ao criar conexão Oracle: %v", err)
 	}
 	defer func() {
-		_ = conn.Close()
+		if err := conn.Close(); err != nil {
+			log.Printf("Erro ao fechar conexão Oracle: %v", err)
+		} else {
+			log.Println("Conexão Oracle encerrada")
+		}
 	}()
+	log.Println("Conexão Oracle estabelecida com sucesso")
 
-	// 4) Upload de empresas
+	// 4) Company upload
 	if mode == "companyupload" {
+		log.Println("Iniciando upload de empresas")
 		companies, err := db.GetTangerinoCompanies(conn)
 		if err != nil {
 			log.Fatalf("Erro ao buscar filiais: %v", err)
 		}
+		log.Printf("Total de empresas a enviar: %d", len(companies))
 		for _, c := range companies {
+			log.Printf("Enviando filial: %s", c.CodFilial)
 			payload := company.CompanyPayload{
 				Cnpj:            c.Cnpj,
 				DescriptionName: c.RazaoSocial,
@@ -110,83 +123,87 @@ func main() {
 				FantasyName:     c.NomeFantasia,
 				SocialReason:    c.RazaoSocial,
 			}
-			log.Printf("CompanyPayload: %+v", payload)
 			if err := company.PostCompanyToTangerino(payload); err != nil {
 				log.Printf("Filial %s erro: %v", c.CodFilial, err)
 			} else {
 				log.Printf("Filial %s enviada com sucesso", c.CodFilial)
 			}
 		}
+		log.Println("Upload de empresas concluído")
 		return
 	}
 
-	// 5) Upload de setores
+	// 5) Workplace upload
 	if mode == "workplaceupload" {
+		log.Println("Iniciando upload de setores")
 		workplaces, err := db.GetTangerinoWorkplaces(conn)
 		if err != nil {
 			log.Fatalf("Erro ao buscar setores: %v", err)
 		}
+		log.Printf("Total de setores a enviar: %d", len(workplaces))
 		for _, w := range workplaces {
+			log.Printf("Enviando setor: %s", w.CodSetor)
 			payload := api.TangerinoWorkplacePayload{
 				ExternalId: w.CodSetor,
 				Name:       w.NomeSetor,
 			}
-			log.Printf("WorkplacePayload: %+v", payload)
 			if err := api.PostWorkplaceToTangerino(payload); err != nil {
 				log.Printf("Setor %s erro: %v", w.CodSetor, err)
 			} else {
 				log.Printf("Setor %s enviado com sucesso", w.CodSetor)
 			}
 		}
+		log.Println("Upload de setores concluído")
 		return
 	}
 
 	// 6) Busca usuários
+	log.Println("Buscando usuários no banco")
 	users, err := db.GetTangerinoUsers(conn)
 	if err != nil {
 		log.Fatalf("Erro ao buscar usuários: %v", err)
 	}
+	log.Printf("Total de usuários encontrados: %d", len(users))
 
 	// 7) Demissão
 	if mode == "dismiss" {
+		log.Println("Iniciando demissão de usuários")
 		for _, u := range users {
+			log.Printf("Processando demissão para CHAPA=%s", u.Chapa)
 			dem := strings.TrimSpace(u.Demissao)
 			if dem == "" {
+				log.Printf("Nenhuma data de demissão para CHAPA=%s, pulando", u.Chapa)
 				continue
 			}
-			msStr, _ := ParseDDMMYYYYToMillis(dem)
-			demTs, _ := strconv.ParseInt(msStr, 10, 64)
+			msStr, err := ParseDDMMYYYYToMillis(dem)
+			if err != nil {
+				log.Printf("Data demissão inválida CHAPA=%s: %s (%v)", u.Chapa, dem, err)
+				continue
+			}
+			demTs, err := strconv.ParseInt(msStr, 10, 64)
+			if err != nil {
+				log.Printf("Erro convertendo demissão CHAPA=%s: %v", u.Chapa, err)
+				continue
+			}
+			log.Printf("Enviando demissão para CHAPA=%s com timestamp %d", u.Chapa, demTs)
 			payload := api.DismissEmployeePayload{
 				ExternalId:      u.Chapa,
 				ResignationDate: demTs,
 			}
-			log.Printf("DismissPayload: %+v", payload)
-			const maxDismissRetries = 3
-			for attempt := 1; attempt <= maxDismissRetries; attempt++ {
-				err := api.DismissEmployee(payload)
-				if err != nil {
-					// se for 5xx, faz retry
-					if strings.Contains(err.Error(), "HTTP 5") && attempt < maxDismissRetries {
-						log.Printf("Tentativa %d para CHAPA=%s falhou com %v; retry em %d s…",
-							attempt, u.Chapa, err, attempt*2)
-						time.Sleep(time.Duration(attempt*2) * time.Second)
-						continue
-					}
-					// erro final
-					log.Printf("Erro demissão CHAPA=%s após %d tentativas: %v", u.Chapa, attempt, err)
-				} else {
-					log.Printf("Demissão CHAPA=%s enviada com sucesso (tentativa %d)", u.Chapa, attempt)
-				}
-				break
+			if err := api.DismissEmployee(payload); err != nil {
+				log.Printf("Falha ao demitir CHAPA=%s: %v", u.Chapa, err)
+			} else {
+				log.Printf("Demissão CHAPA=%s enviada com sucesso", u.Chapa)
 			}
 		}
+		log.Println("Processo de demissão finalizado")
 		return
 	}
 
 	// 8) Insert / Update
 	log.Println("Iniciando processamento de insert/update de usuários")
 	// Data fixa para EffectiveDate
-	fixedDate := "01/04/2025"
+	fixedDate := "02/06/2025"
 	fixedMsStr, err := ParseDDMMYYYYToMillis(fixedDate)
 	if err != nil {
 		log.Fatalf("Erro parsing fixed effective date (%s): %v", fixedDate, err)
@@ -195,8 +212,7 @@ func main() {
 
 	for _, u := range users {
 		log.Printf("Processando usuário CHAPA=%s", u.Chapa)
-		log.Printf("DEBUG: CodSituacao de CHAPA=%s = %q", u.Chapa, u.CodSituacao)
-		if mode == "insert" && strings.EqualFold(strings.TrimSpace(u.CodSituacao), "D") {
+		if mode == "insert" && strings.TrimSpace(u.CodSituacao) == "D" {
 			log.Printf("Pulando CHAPA=%s pois CodSituacao=D", u.Chapa)
 			continue
 		}

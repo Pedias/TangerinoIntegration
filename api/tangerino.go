@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 func getEmployerApiToken() string {
@@ -42,7 +43,11 @@ func postEmployee(url string, emp TangerinoEmployeePayload) error {
 	req.Header.Set("Authorization", getEmployerApiToken())
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout:   30 * time.Second,      // timeout total da requisição
+		Transport: http.DefaultTransport, // mantém keep-alives, etc.
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
