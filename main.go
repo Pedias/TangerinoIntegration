@@ -184,61 +184,58 @@ func main() {
 	}
 
 	// 8) Insert / Update
-	log.Println("Iniciando processamento de insert/update de usuários")
-	// Data fixa para EffectiveDate
-	fixedDate := "01/04/2025"
-	fixedMsStr, err := ParseDDMMYYYYToMillis(fixedDate)
-	if err != nil {
-		log.Fatalf("Erro parsing fixed effective date (%s): %v", fixedDate, err)
-	}
-	log.Printf("Fixed EffectiveDate (Unix ms): %s", fixedMsStr)
+	// Computa fixed date e converte para ms
+	fixedDate := "02/06/2025"
+	fixedMsStr, _ := ParseDDMMYYYYToMillis(fixedDate)
+	fixedMsInt, _ := strconv.ParseInt(fixedMsStr, 10, 64)
 
 	for _, u := range users {
-		log.Printf("Processando usuário CHAPA=%s", u.Chapa)
-		log.Printf("DEBUG: CodSituacao de CHAPA=%s = %q", u.Chapa, u.CodSituacao)
-		if mode == "insert" && strings.EqualFold(strings.TrimSpace(u.CodSituacao), "D") {
-			log.Printf("Pulando CHAPA=%s pois CodSituacao=D", u.Chapa)
+		// DEBUG: ver valor lido
+		status := strings.TrimSpace(u.CodSituacao)
+		log.Printf("DEBUG CodSituacao CHAPA=%s: %q", u.Chapa, status)
+		log.Printf("DEBUG Demissao CHAPA=%s: %q", u.Chapa, u.Demissao)
+
+		// Skip de TODOS os demitidos, em insert **e** update
+		dem := strings.TrimSpace(u.Demissao)
+		if dem != "" {
+			log.Printf("Pulando CHAPA=%s pois possui data de demissão (%s)", u.Chapa, dem)
 			continue
 		}
 
+		// parse data de admissao
 		admissionMsStr, err := ParseDDMMYYYYToMillis(u.Admissao)
 		if err != nil {
 			log.Printf("Admissão inválida CHAPA=%s: %v", u.Chapa, err)
 			continue
 		}
-		log.Printf("AdmissionDate (Unix ms) para CHAPA=%s: %s", u.Chapa, admissionMsStr)
+		admissionMsInt, _ := strconv.ParseInt(admissionMsStr, 10, 64)
+		log.Printf("AdmissionDate (Unix ms) CHAPA=%s: %s", u.Chapa, admissionMsStr)
 
-		birthMsStr, err := ParseDDMMYYYYToMillis(u.Nascimento)
-		if err != nil {
-			log.Printf("Nascimento inválido CHAPA=%s: %v", u.Chapa, err)
-			continue
+		// determina EffectiveDate: se admission > fixedDate, usa admission; senão fixedDate
+		effectiveMsStr := fixedMsStr
+		if admissionMsInt > fixedMsInt {
+			effectiveMsStr = admissionMsStr
 		}
-		log.Printf("BirthDate (Unix ms) para CHAPA=%s: %s", u.Chapa, birthMsStr)
+		log.Printf("EffectiveDate usada CHAPA=%s: %s", u.Chapa, effectiveMsStr)
 
+		// demais campos
+		birthMsStr, _ := ParseDDMMYYYYToMillis(u.Nascimento)
 		gender := "MASCULINO"
 		if strings.EqualFold(u.Sexo, "F") {
 			gender = "FEMININO"
 		}
-		log.Printf("Gênero para CHAPA=%s: %s", u.Chapa, gender)
-
 		email := strings.TrimSpace(u.Email)
 		if _, err := mail.ParseAddress(email); err != nil {
-			log.Printf("Email inválido CHAPA=%s: %q; omitindo", u.Chapa, email)
 			email = ""
 		}
-		log.Printf("Email válido (ou vazio) para CHAPA=%s: %q", u.Chapa, email)
+		intern := strings.Contains(strings.ToUpper(u.Funcao), "ESTAGIÁRIO")
 
-		intern := false
-		if strings.Contains(strings.ToUpper(u.Funcao), "ESTAGIÁRIO") {
-			intern = true
-		}
-		log.Printf("Intern para CHAPA=%s: %v", u.Chapa, intern)
-
+		// monta payload completo
 		payload := api.TangerinoEmployeePayload{
 			Name:                u.Nome,
 			Cpf:                 u.Cpf,
 			AdmissionDate:       admissionMsStr,
-			EffectiveDate:       fixedMsStr,
+			EffectiveDate:       effectiveMsStr,
 			ExternalId:          u.Chapa,
 			Email:               email,
 			BirthDate:           birthMsStr,
